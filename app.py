@@ -3,8 +3,211 @@ import requests
 import re
 from typing import List, Dict, Optional
 
-st.set_page_config(page_title="Drug Interaction Checker", page_icon="💊", layout="centered")
+st.set_page_config(
+    page_title="MedCheck AI",
+    page_icon="💊",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
+# ===================== CUSTOM CSS =====================
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .main {
+        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+        min-height: 100vh;
+    }
+    
+    .stApp {
+        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    }
+    
+    .title-container {
+        text-align: center;
+        padding: 2rem 0 1rem 0;
+    }
+    
+    .main-title {
+        font-size: 3rem;
+        font-weight: 700;
+        background: linear-gradient(90deg, #00d4ff, #7b2cbf, #ff006e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.5rem;
+        letter-spacing: -1px;
+    }
+    
+    .subtitle {
+        color: #a0a0c0;
+        font-size: 1.1rem;
+        font-weight: 300;
+        margin-top: -10px;
+    }
+    
+    .badge {
+        display: inline-block;
+        background: rgba(0, 212, 255, 0.15);
+        border: 1px solid rgba(0, 212, 255, 0.3);
+        color: #00d4ff;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-top: 8px;
+    }
+    
+    .card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    .input-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .result-danger {
+        background: linear-gradient(135deg, rgba(255, 0, 110, 0.15), rgba(255, 0, 110, 0.05));
+        border: 1px solid rgba(255, 0, 110, 0.4);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        animation: pulse-danger 2s infinite;
+    }
+    
+    .result-safe {
+        background: linear-gradient(135deg, rgba(0, 255, 136, 0.15), rgba(0, 255, 136, 0.05));
+        border: 1px solid rgba(0, 255, 136, 0.4);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    
+    @keyframes pulse-danger {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 110, 0.2); }
+        50% { box-shadow: 0 0 20px 5px rgba(255, 0, 110, 0.1); }
+    }
+    
+    .drug-tag {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 6px 16px;
+        border-radius: 25px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin: 2px;
+    }
+    
+    .context-box {
+        background: rgba(0, 0, 0, 0.3);
+        border-left: 3px solid #00d4ff;
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        margin-top: 10px;
+        color: #c0c0e0;
+        font-style: italic;
+        font-size: 0.9rem;
+    }
+    
+    .stat-box {
+        text-align: center;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #00d4ff;
+    }
+    
+    .stat-label {
+        font-size: 0.8rem;
+        color: #8888aa;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .footer {
+        text-align: center;
+        color: #555577;
+        font-size: 0.75rem;
+        margin-top: 3rem;
+        padding-bottom: 2rem;
+    }
+    
+    div[data-testid="stTabs"] button {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-radius: 8px 8px 0 0 !important;
+        border: none !important;
+        color: #8888aa !important;
+        font-weight: 500 !important;
+    }
+    
+    div[data-testid="stTabs"] button[aria-selected="true"] {
+        background: rgba(0, 212, 255, 0.15) !important;
+        color: #00d4ff !important;
+        border-bottom: 2px solid #00d4ff !important;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 32px;
+        font-weight: 600;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+    }
+    
+    .stTextInput > div > div > input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        color: white;
+        padding: 14px;
+        font-size: 1rem;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #00d4ff;
+        box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+    }
+    
+    .stRadio > div {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 10px;
+        padding: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ===================== API CONFIG =====================
 BASE_URL = "https://api.fda.gov/drug/label.json"
 
 KNOWN_DRUGS = {
@@ -297,129 +500,4 @@ class OpenFDAInteractionFinder:
             return {
                 "success": False,
                 "drug": drug_name,
-                "error": "No FDA label found for '" + drug_name + "'",
-                "raw_interactions": None,
-                "interacting_drugs": []
-            }
-        openfda = label.get("openfda", {})
-        brand_names = openfda.get("brand_name", [])
-        generic_names = openfda.get("generic_name", [])
-        manufacturer = openfda.get("manufacturer_name", ["Unknown"])
-        if isinstance(manufacturer, list):
-            manufacturer = manufacturer[0]
-        interaction_text = self.extract_interaction_text(label)
-        if not interaction_text:
-            return {
-                "success": True,
-                "drug": drug_name,
-                "brand_names": brand_names,
-                "generic_names": generic_names,
-                "manufacturer": manufacturer,
-                "raw_interactions": None,
-                "interacting_drugs": [],
-                "note": "No drug interactions section in FDA label"
-            }
-        interacting_drugs = self.extract_drugs_from_text(interaction_text, label)
-        return {
-            "success": True,
-            "drug": drug_name,
-            "brand_names": brand_names,
-            "generic_names": generic_names,
-            "manufacturer": manufacturer,
-            "raw_interactions": interaction_text,
-            "interacting_drugs": interacting_drugs,
-            "interaction_count": len(interacting_drugs)
-        }
-
-
-def get_interacting_drugs(drug_name: str, search_type: str = "brand") -> List[str]:
-    finder = OpenFDAInteractionFinder(api_key=None)
-    result = finder.get_interactions(drug_name, search_type)
-    if not result["success"]:
-        return []
-    return [d["drug"].lower() for d in result.get("interacting_drugs", [])]
-
-
-def check_interaction_between_two(drug_a: str, drug_b: str) -> Dict:
-    """Check if drug_b interacts with drug_a using openFDA."""
-    finder = OpenFDAInteractionFinder(api_key=None)
-    result = finder.get_interactions(drug_a, "generic")
-    
-    if not result["success"]:
-        return {"found": False, "reason": result.get("error", "Unknown error")}
-    
-    interacting = result.get("interacting_drugs", [])
-    drug_b_lower = drug_b.lower()
-    
-    for item in interacting:
-        if item["drug"].lower() == drug_b_lower or drug_b_lower in item["drug"].lower():
-            return {"found": True, "context": item["context"], "method": item["method"]}
-    
-    return {"found": False, "reason": "No interaction found in FDA label"}
-
-
-# ========================= STREAMLIT UI =========================
-
-st.title("Drug Interaction Checker")
-st.markdown("Powered by openFDA (FDA Official Drug Labels)")
-st.markdown("---")
-
-tab1, tab2 = st.tabs(["Two-Drug Check", "Single Drug Interactions"])
-
-with tab1:
-    st.subheader("Check Interaction Between Two Drugs")
-    col1, col2 = st.columns(2)
-    with col1:
-        drug1 = st.text_input("Drug 1", placeholder="e.g. Warfarin", key="d1")
-    with col2:
-        drug2 = st.text_input("Drug 2", placeholder="e.g. Aspirin", key="d2")
-    
-    if st.button("Check Interaction", key="btn1"):
-        if not drug1 or not drug2:
-            st.error("Please enter both drug names")
-        else:
-            with st.spinner("Fetching from openFDA..."):
-                result = check_interaction_between_two(drug1, drug2)
-            
-            if result["found"]:
-                st.error("INTERACTION DETECTED")
-                st.markdown("**" + drug1 + "** may interact with **" + drug2 + "**")
-                st.info("Context: " + result["context"])
-                st.caption("Source: FDA Drug Label (openFDA) | Method: " + result["method"])
-            else:
-                st.success("No interaction found in FDA label")
-                st.caption("Source: FDA Drug Label (openFDA)")
-                with st.expander("See why"):
-                    st.write(result["reason"])
-
-with tab2:
-    st.subheader("Find All Interactions for a Drug")
-    drug_input = st.text_input("Enter drug name", placeholder="e.g. Metformin", key="d3")
-    search_type = st.radio("Search by", ["generic", "brand"], horizontal=True, key="stype")
-    
-    if st.button("Find Interactions", key="btn2"):
-        if not drug_input:
-            st.error("Please enter a drug name")
-        else:
-            with st.spinner("Fetching from openFDA..."):
-                finder = OpenFDAInteractionFinder(api_key=None)
-                result = finder.get_interactions(drug_input, search_type)
-            
-            if not result["success"]:
-                st.error(result["error"])
-            else:
-                bn = ", ".join(result.get("brand_names", [])) or "N/A"
-                gn = ", ".join(result.get("generic_names", [])) or "N/A"
-                st.markdown("**Brand:** " + bn)
-                st.markdown("**Generic:** " + gn)
-                st.markdown("**Manufacturer:** " + result.get("manufacturer", "N/A"))
-                st.markdown("---")
-                
-                drugs = result.get("interacting_drugs", [])
-                if not drugs:
-                    st.warning("No interacting drugs found in FDA label")
-                else:
-                    st.success("Found " + str(len(drugs)) + " interacting drug(s)")
-                    for item in drugs:
-                        icon = "blue" if item["method"] == "dictionary" else "orange"
-                       
+             
