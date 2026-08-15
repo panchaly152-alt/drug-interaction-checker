@@ -1,18 +1,12 @@
-"""
-openFDA Drug Interaction Fetcher
-================================
-Drop-in replacement for RxNav. Fetches FDA labels, extracts interactions.
-
-Dependencies: requests (pip install requests)
-"""
-
+import streamlit as st
 import requests
 import re
 from typing import List, Dict, Optional
 
+st.set_page_config(page_title="Drug Interaction Checker", page_icon="💊", layout="centered")
+
 BASE_URL = "https://api.fda.gov/drug/label.json"
 
-# Common drug names for dictionary matching
 KNOWN_DRUGS = {
     "warfarin", "aspirin", "ibuprofen", "naproxen", "acetaminophen", "paracetamol",
     "amoxicillin", "azithromycin", "ciprofloxacin", "metformin", "insulin",
@@ -176,9 +170,7 @@ SKIP_WORDS = {
 
 
 class OpenFDAInteractionFinder:
-    """Robust client to fetch drug-drug interactions from openFDA drug labels."""
-
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: None):
         self.api_key = api_key
         self.session = requests.Session()
         self.session.headers.update({
@@ -193,7 +185,7 @@ class OpenFDAInteractionFinder:
             if response.status_code == 404:
                 return None
             if response.status_code == 429:
-                print("[WARN] Rate limit exceeded. Get free API key at open.fda.gov")
+                st.warning("Rate limit exceeded. Get free API key at open.fda.gov")
                 return None
             if response.status_code != 200:
                 return None
@@ -253,7 +245,6 @@ class OpenFDAInteractionFinder:
         text_lower = text.lower()
         seen = set()
 
-        # Strategy 1: Dictionary matching
         for drug in known_drugs:
             if len(drug) < 3:
                 continue
@@ -271,7 +262,6 @@ class OpenFDAInteractionFinder:
                     seen.add(drug)
                     break
 
-        # Strategy 2: Heuristic - capitalized sequences
         cap_pattern = r'\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\b'
         for match in re.finditer(cap_pattern, text):
             candidate = match.group(1)
@@ -341,57 +331,95 @@ class OpenFDAInteractionFinder:
             "interaction_count": len(interacting_drugs)
         }
 
-    def print_report(self, result: Dict):
-        if not result["success"]:
-            print("\nERROR: " + result["error"])
-            return
-        sep = "=" * 60
-        print("\n" + sep)
-        print("INTERACTION REPORT: " + result["drug"].upper())
-        print(sep)
-        bn = ", ".join(result.get("brand_names", [])) or "N/A"
-        gn = ", ".join(result.get("generic_names", [])) or "N/A"
-        print("Brand Name(s): " + bn)
-        print("Generic Name(s): " + gn)
-        print("Manufacturer: " + result.get("manufacturer", "N/A"))
-        print(sep)
-        drugs = result.get("interacting_drugs", [])
-        if not drugs:
-            print("\nNo interacting drugs could be extracted.")
-            raw = result.get("raw_interactions", "")
-            print("\nRaw Text (first 800 chars):\n" + raw[:800] + "...")
-            return
-        print("\nFound " + str(len(drugs)) + " potentially interacting drug(s):\n")
-        for i, drug_info in enumerate(drugs[:30], 1):
-            icon = "[D]" if drug_info["method"] == "dictionary" else "[H]"
-            print(str(i).rjust(2) + ". " + icon + " " + drug_info["drug"])
-            print("    " + drug_info["context"])
-            print()
-        if len(drugs) > 30:
-            print("... and " + str(len(drugs) - 30) + " more (truncated)")
-        print("\nFull Raw Interaction Text (first 1500 chars):")
-        print("-" * 60)
-        raw = result.get("raw_interactions", "")
-        if len(raw) > 1500:
-            print(raw[:1500] + "\n... [truncated]")
-        else:
-            print(raw)
-        print("-" * 60)
-
 
 def get_interacting_drugs(drug_name: str, search_type: str = "brand") -> List[str]:
-    """Simple drop-in replacement for RxNav."""
-    finder = OpenFDAInteractionFinder()
+    finder = OpenFDAInteractionFinder(api_key=None)
     result = finder.get_interactions(drug_name, search_type)
     if not result["success"]:
         return []
     return [d["drug"].lower() for d in result.get("interacting_drugs", [])]
 
 
-def get_interactions_with_context(drug_name: str, search_type: str = "brand") -> List[Dict]:
-    """Returns interacting drugs with context snippets."""
-    finder = OpenFDAInteractionFinder()
-    result = finder.get_interactions(drug_name, search_type)
+def check_interaction_between_two(drug_a: str, drug_b: str) -> Dict:
+    """Check if drug_b interacts with drug_a using openFDA."""
+    finder = OpenFDAInteractionFinder(api_key=None)
+    result = finder.get_interactions(drug_a, "generic")
+    
     if not result["success"]:
-        return []
-    return result.get("interacting_drugs", [])
+        return {"found": False, "reason": result.get("error", "Unknown error")}
+    
+    interacting = result.get("interacting_drugs", [])
+    drug_b_lower = drug_b.lower()
+    
+    for item in interacting:
+        if item["drug"].lower() == drug_b_lower or drug_b_lower in item["drug"].lower():
+            return {"found": True, "context": item["context"], "method": item["method"]}
+    
+    return {"found": False, "reason": "No interaction found in FDA label"}
+
+
+# ========================= STREAMLIT UI =========================
+
+st.title("Drug Interaction Checker")
+st.markdown("Powered by openFDA (FDA Official Drug Labels)")
+st.markdown("---")
+
+tab1, tab2 = st.tabs(["Two-Drug Check", "Single Drug Interactions"])
+
+with tab1:
+    st.subheader("Check Interaction Between Two Drugs")
+    col1, col2 = st.columns(2)
+    with col1:
+        drug1 = st.text_input("Drug 1", placeholder="e.g. Warfarin", key="d1")
+    with col2:
+        drug2 = st.text_input("Drug 2", placeholder="e.g. Aspirin", key="d2")
+    
+    if st.button("Check Interaction", key="btn1"):
+        if not drug1 or not drug2:
+            st.error("Please enter both drug names")
+        else:
+            with st.spinner("Fetching from openFDA..."):
+                result = check_interaction_between_two(drug1, drug2)
+            
+            if result["found"]:
+                st.error("INTERACTION DETECTED")
+                st.markdown("**" + drug1 + "** may interact with **" + drug2 + "**")
+                st.info("Context: " + result["context"])
+                st.caption("Source: FDA Drug Label (openFDA) | Method: " + result["method"])
+            else:
+                st.success("No interaction found in FDA label")
+                st.caption("Source: FDA Drug Label (openFDA)")
+                with st.expander("See why"):
+                    st.write(result["reason"])
+
+with tab2:
+    st.subheader("Find All Interactions for a Drug")
+    drug_input = st.text_input("Enter drug name", placeholder="e.g. Metformin", key="d3")
+    search_type = st.radio("Search by", ["generic", "brand"], horizontal=True, key="stype")
+    
+    if st.button("Find Interactions", key="btn2"):
+        if not drug_input:
+            st.error("Please enter a drug name")
+        else:
+            with st.spinner("Fetching from openFDA..."):
+                finder = OpenFDAInteractionFinder(api_key=None)
+                result = finder.get_interactions(drug_input, search_type)
+            
+            if not result["success"]:
+                st.error(result["error"])
+            else:
+                bn = ", ".join(result.get("brand_names", [])) or "N/A"
+                gn = ", ".join(result.get("generic_names", [])) or "N/A"
+                st.markdown("**Brand:** " + bn)
+                st.markdown("**Generic:** " + gn)
+                st.markdown("**Manufacturer:** " + result.get("manufacturer", "N/A"))
+                st.markdown("---")
+                
+                drugs = result.get("interacting_drugs", [])
+                if not drugs:
+                    st.warning("No interacting drugs found in FDA label")
+                else:
+                    st.success("Found " + str(len(drugs)) + " interacting drug(s)")
+                    for item in drugs:
+                        icon = "blue" if item["method"] == "dictionary" else "orange"
+                       
