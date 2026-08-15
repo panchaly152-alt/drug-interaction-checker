@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import re
-from typing import List, Dict, Optional
 
 st.set_page_config(page_title="MedCheck AI", page_icon="💊", layout="centered")
 
@@ -11,9 +10,9 @@ KNOWN_DRUGS = {
     "warfarin", "aspirin", "ibuprofen", "naproxen", "acetaminophen", "paracetamol",
     "amoxicillin", "azithromycin", "ciprofloxacin", "metformin", "insulin",
     "atorvastatin", "simvastatin", "rosuvastatin", "pravastatin", "fluvastatin",
-    "lovastatin", "pitavastatin", "lisinopril", "enalapril", "captopril",
-    "amlodipine", "nifedipine", "felodipine", "metoprolol", "atenolol",
-    "propranolol", "carvedilol", "bisoprolol", "losartan", "valsartan",
+    "lovastatin", "lisinopril", "enalapril", "captopril", "amlodipine",
+    "nifedipine", "felodipine", "metoprolol", "atenolol", "propranolol",
+    "carvedilol", "bisoprolol", "losartan", "valsartan", "irbesartan",
     "omeprazole", "esomeprazole", "lansoprazole", "pantoprazole", "rabeprazole",
     "ranitidine", "famotidine", "sertraline", "fluoxetine", "escitalopram",
     "paroxetine", "alprazolam", "lorazepam", "clonazepam", "diazepam",
@@ -89,144 +88,152 @@ SKIP_WORDS = {
 }
 
 
-class OpenFDAInteractionFinder:
-    def __init__(self, api_key=None):
-        self.api_key = api_key
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Pharmacy-Project/1.0)"})
-
-    def _make_request(self, params):
-        if self.api_key:
-            params["api_key"] = self.api_key
-        try:
-            resp = self.session.get(BASE_URL, params=params, timeout=15)
-            if resp.status_code == 404:
-                return None
-            if resp.status_code == 429:
-                st.warning("Rate limit hit. Get API key at open.fda.gov")
-                return None
-            if resp.status_code != 200:
-                return None
-            return resp.json()
-        except Exception:
-            return None
-
-    def search_drug(self, drug_name, search_type="brand"):
-        drug_name = drug_name.strip().upper()
+def fetch_label(drug_name, search_type="generic"):
+    drug_name = drug_name.strip().upper()
+    if search_type == "brand":
+        q = 'openfda.brand_name:"' + drug_name + '"'
+    else:
+        q = 'openfda.generic_name:"' + drug_name + '"'
+    try:
+        r = requests.get(BASE_URL, params={"search": q, "limit": 1}, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("results"):
+                return data["results"][0]
+        # fallback partial
         if search_type == "brand":
-            q = 'openfda.brand_name:"' + drug_name + '"'
+            q = 'openfda.brand_name:' + drug_name
         else:
-            q = 'openfda.generic_name:"' + drug_name + '"'
-        data = self._make_request({"search": q, "limit": 1})
-        if not data or not data.get("results"):
-            if search_type == "brand":
-                q = 'openfda.brand_name:' + drug_name
-            else:
-                q = 'openfda.generic_name:' + drug_name
-            data = self._make_request({"search": q, "limit": 1})
-        if data and data.get("results"):
-            return data["results"][0]
+            q = 'openfda.generic_name:' + drug_name
+        r = requests.get(BASE_URL, params={"search": q, "limit": 1}, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("results"):
+                return data["results"][0]
+    except Exception as e:
+        return {"error": str(e)}
+    return None
+
+
+def get_interaction_text(label):
+    if not label or isinstance(label, dict) and "error" in label:
         return None
+    interactions = label.get("drug_interactions")
+    if interactions and isinstance(interactions, list) and len(interactions) > 0:
+        return interactions[0]
+    # fallback
+    for key, val in label.items():
+        if "drug_interaction" in key.lower():
+            if isinstance(val, list) and val:
+                return val[0]
+            elif isinstance(val, str):
+                return val
+    return None
 
-    def extract_interaction_text(self, label):
-        if not label:
-            return None
-        interactions = label.get("drug_interactions")
-        if interactions and isinstance(interactions, list) and interactions:
-            return interactions[0]
-        for key, val in label.items():
-            if "drug_interaction" in key.lower():
-                if isinstance(val, list) and val:
-                    return val[0]
-                elif isinstance(val, str):
-                    return val
-        return None
 
-    def _get_label_drugs(self, label):
-        drugs = set()
-        openfda = label.get("openfda", {})
-        for field in ["brand_name", "generic_name", "substance_name"]:
-            values = openfda.get(field, [])
-            if isinstance(values, str):
-                values = [values]
-            for v in values:
-                drugs.add(v.lower().strip())
-        return drugs
-
-    def extract_drugs_from_text(self, text, label):
-        if not text:
-            return []
-        known_drugs = KNOWN_DRUGS | self._get_label_drugs(label)
-        found = []
-        text_lower = text.lower()
-        seen = set()
-        for drug in known_drugs:
-            if len(drug) < 3:
-                continue
-            pattern = r"\b" + re.escape(drug) + r"\b"
-            for match in re.finditer(pattern, text_lower):
-                if drug not in seen:
-                    start = max(0, match.start() - 60)
-                    end = min(len(text), match.end() + 60)
-                    snippet = text[start:end].strip()
-                    found.append({"drug": drug.title(), "context": "..." + snippet + "...", "method": "dictionary"})
-                    seen.add(drug)
+def extract_drugs(text, label):
+    if not text:
+        return []
+    # Build known set from label + hardcoded
+    known = set(KNOWN_DRUGS)
+    openfda = label.get("openfda", {}) if isinstance(label, dict) else {}
+    for field in ["brand_name", "generic_name", "substance_name"]:
+        vals = openfda.get(field, [])
+        if isinstance(vals, str):
+            vals = [vals]
+        for v in vals:
+            known.add(v.lower().strip())
+    
+    found = []
+    text_lower = text.lower()
+    seen = set()
+    
+    # Dictionary match
+    for drug in known:
+        if len(drug) < 3:
+            continue
+        pat = r"\b" + re.escape(drug) + r"\b"
+        if re.search(pat, text_lower):
+            if drug not in seen:
+                idx = text_lower.find(drug)
+                start = max(0, idx - 60)
+                end = min(len(text), idx + len(drug) + 60)
+                found.append({"drug": drug.title(), "context": text[start:end], "method": "dictionary"})
+                seen.add(drug)
+    
+    # Heuristic match
+    cap_pat = r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\b"
+    for m in re.finditer(cap_pat, text):
+        cand = m.group(1)
+        cl = cand.lower()
+        if cl in SKIP_WORDS or len(cl) < 3 or cl in seen:
+            continue
+        looks = any(cl.endswith(s) for s in DRUG_SUFFIXES)
+        if not looks:
+            for w in cl.split():
+                if w in known and len(w) > 3:
+                    looks = True
                     break
-        cap_pattern = r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\b"
-        for match in re.finditer(cap_pattern, text):
-            candidate = match.group(1)
-            cand_lower = candidate.lower()
-            if cand_lower in SKIP_WORDS or len(cand_lower) < 3:
-                continue
-            if cand_lower in seen:
-                continue
-            looks_drug = any(cand_lower.endswith(s) for s in DRUG_SUFFIXES)
-            if not looks_drug:
-                for w in cand_lower.split():
-                    if w in known_drugs and len(w) > 3:
-                        looks_drug = True
-                        break
-            if looks_drug:
-                start = max(0, match.start() - 60)
-                end = min(len(text), match.end() + 60)
-                snippet = text[start:end].strip()
-                found.append({"drug": candidate, "context": "..." + snippet + "...", "method": "heuristic"})
-                seen.add(cand_lower)
-        found.sort(key=lambda x: text_lower.find(x["drug"].lower()) if text_lower.find(x["drug"].lower()) != -1 else 99999)
-        return found
-
-    def get_interactions(self, drug_name, search_type="brand"):
-        label = self.search_drug(drug_name, search_type)
-        if not label:
-            return {"success": False, "drug": drug_name, "error": "No FDA label found for '" + drug_name + "'", "interacting_drugs": []}
-        openfda = label.get("openfda", {})
-        brand_names = openfda.get("brand_name", [])
-        generic_names = openfda.get("generic_name", [])
-        manufacturer = openfda.get("manufacturer_name", ["Unknown"])
-        if isinstance(manufacturer, list):
-            manufacturer = manufacturer[0]
-        interaction_text = self.extract_interaction_text(label)
-        if not interaction_text:
-            return {"success": True, "drug": drug_name, "brand_names": brand_names, "generic_names": generic_names, "manufacturer": manufacturer, "interacting_drugs": [], "note": "No interactions section"}
-        interacting_drugs = self.extract_drugs_from_text(interaction_text, label)
-        return {"success": True, "drug": drug_name, "brand_names": brand_names, "generic_names": generic_names, "manufacturer": manufacturer, "interacting_drugs": interacting_drugs, "interaction_count": len(interacting_drugs)}
+        if looks:
+            idx = text_lower.find(cl)
+            start = max(0, idx - 60)
+            end = min(len(text), idx + len(cl) + 60)
+            found.append({"drug": cand, "context": text[start:end], "method": "heuristic"})
+            seen.add(cl)
+    
+    found.sort(key=lambda x: text_lower.find(x["drug"].lower()) if text_lower.find(x["drug"].lower()) != -1 else 99999)
+    return found
 
 
-def check_interaction_between_two(drug_a, drug_b):
-    finder = OpenFDAInteractionFinder()
-    result = finder.get_interactions(drug_a, "generic")
-    if not result["success"]:
-        return {"found": False, "reason": result.get("error", "Unknown")}
-    interacting = result.get("interacting_drugs", [])
-    drug_b_lower = drug_b.lower()
-    for item in interacting:
-        if item["drug"].lower() == drug_b_lower or drug_b_lower in item["drug"].lower():
-            return {"found": True, "context": item["context"], "method": item["method"]}
-    return {"found": False, "reason": "No interaction found in FDA label"}
+def get_all_interactions(drug_name, search_type="generic"):
+    label = fetch_label(drug_name, search_type)
+    if label is None:
+        return {"ok": False, "error": "No FDA label found for '" + drug_name + "'"}
+    if isinstance(label, dict) and "error" in label:
+        return {"ok": False, "error": "API error: " + label["error"]}
+    
+    openfda = label.get("openfda", {})
+    brand = openfda.get("brand_name", [])
+    generic = openfda.get("generic_name", [])
+    mfr = openfda.get("manufacturer_name", ["Unknown"])
+    if isinstance(mfr, list):
+        mfr = mfr[0]
+    
+    text = get_interaction_text(label)
+    if not text:
+        return {
+            "ok": True, "drug": drug_name, "brand": brand, "generic": generic,
+            "manufacturer": mfr, "interactions": [], "raw_len": 0,
+            "note": "No drug_interactions section in label"
+        }
+    
+    drugs = extract_drugs(text, label)
+    return {
+        "ok": True, "drug": drug_name, "brand": brand, "generic": generic,
+        "manufacturer": mfr, "interactions": drugs, "raw_len": len(text),
+        "raw_preview": text[:500]
+    }
 
 
+def check_two(drug_a, drug_b):
+    data = get_all_interactions(drug_a, "generic")
+    if not data["ok"]:
+        return {"found": False, "reason": data["error"], "debug": data}
+    
+    interactions = data.get("interactions", [])
+    b_lower = drug_b.lower()
+    
+    for item in interactions:
+        item_lower = item["drug"].lower()
+        if item_lower == b_lower or b_lower in item_lower or item_lower in b_lower:
+            return {"found": True, "context": item["context"], "method": item["method"], "debug": data}
+    
+    return {"found": False, "reason": "Drug '" + drug_b + "' not in extracted interaction list", "debug": data}
+
+
+# ===================== UI =====================
 st.title("💊 MedCheck AI")
-st.caption("Intelligent Drug Interaction Analysis | Powered by openFDA")
+st.caption("Powered by openFDA | FDA Official Drug Labels")
 st.markdown("---")
 
 tab1, tab2 = st.tabs(["🔍 Two-Drug Check", "📋 Single Drug Profile"])
@@ -234,55 +241,69 @@ tab1, tab2 = st.tabs(["🔍 Two-Drug Check", "📋 Single Drug Profile"])
 with tab1:
     c1, c2 = st.columns(2)
     with c1:
-        drug1 = st.text_input("Drug 1", placeholder="e.g. Warfarin")
+        d1 = st.text_input("Drug 1", placeholder="e.g. Warfarin")
     with c2:
-        drug2 = st.text_input("Drug 2", placeholder="e.g. Aspirin")
+        d2 = st.text_input("Drug 2", placeholder="e.g. Aspirin")
+    
     if st.button("Analyze Interaction", use_container_width=True):
-        if not drug1 or not drug2:
-            st.error("Enter both drug names")
+        if not d1 or not d2:
+            st.error("Enter both drugs")
         else:
-            with st.spinner("Checking FDA labels..."):
-                result = check_interaction_between_two(drug1, drug2)
+            with st.spinner("Fetching from openFDA..."):
+                result = check_two(d1, d2)
+            
             if result["found"]:
                 st.error("⚠️ INTERACTION DETECTED")
-                st.markdown("**" + drug1 + "** may interact with **" + drug2 + "**")
+                st.write("**" + d1 + "** + **" + d2 + "**")
                 st.info(result["context"])
-                st.caption("Source: FDA Drug Label | Detection: " + result["method"].title())
+                st.caption("Detected via: " + result["method"])
             else:
-                st.success("✅ No interaction found in FDA label")
-                with st.expander("See details"):
-                    st.write(result["reason"])
+                st.success("✅ No interaction found")
+                st.caption("Source: FDA Drug Label (openFDA)")
+            
+            # DEBUG expander
+            with st.expander("Debug: See what FDA label contains"):
+                debug = result.get("debug", {})
+                st.write("Label found:", debug.get("ok", False))
+                st.write("Brand names:", debug.get("brand", []))
+                st.write("Generic names:", debug.get("generic", []))
+                st.write("Interaction text length:", debug.get("raw_len", 0))
+                st.write("Extracted drugs count:", len(debug.get("interactions", [])))
+                st.write("Extracted drugs:", [i["drug"] for i in debug.get("interactions", [])])
+                if debug.get("raw_preview"):
+                    st.text_area("Raw text preview", debug["raw_preview"], height=100)
 
 with tab2:
-    drug_input = st.text_input("Enter drug name", placeholder="e.g. Metformin", key="d3")
-    search_type = st.radio("Search by", ["generic", "brand"], horizontal=True)
+    drug_input = st.text_input("Drug name", placeholder="e.g. Metformin", key="d3")
+    stype = st.radio("Search by", ["generic", "brand"], horizontal=True)
+    
     if st.button("Find Interactions", key="btn2", use_container_width=True):
         if not drug_input:
             st.error("Enter a drug name")
         else:
-            with st.spinner("Scanning FDA database..."):
-                finder = OpenFDAInteractionFinder()
-                result = finder.get_interactions(drug_input, search_type)
-            if not result["success"]:
-                st.error(result["error"])
+            with st.spinner("Scanning..."):
+                data = get_all_interactions(drug_input, stype)
+            
+            if not data["ok"]:
+                st.error(data["error"])
             else:
                 c1, c2 = st.columns(2)
-                c1.metric("Interactions", len(result.get("interacting_drugs", [])))
-                c2.metric("Manufacturer", result.get("manufacturer", "N/A")[:20])
-                st.write("**Brand:**", ", ".join(result.get("brand_names", [])) or "N/A")
-                st.write("**Generic:**", ", ".join(result.get("generic_names", [])) or "N/A")
+                c1.metric("Interactions", len(data["interactions"]))
+                c2.metric("Mfr", data["manufacturer"][:20])
+                st.write("Brand:", ", ".join(data["brand"]) or "N/A")
+                st.write("Generic:", ", ".join(data["generic"]) or "N/A")
                 st.divider()
-                drugs = result.get("interacting_drugs", [])
-                if not drugs:
-                    st.warning("No interacting drugs found")
+                
+                if not data["interactions"]:
+                    st.warning("No interactions extracted")
+                    if data.get("note"):
+                        st.write(data["note"])
                 else:
-                    for item in drugs:
+                    for item in data["interactions"]:
                         icon = "📖" if item["method"] == "dictionary" else "🔎"
                         with st.expander(icon + " " + item["drug"]):
                             st.write(item["context"])
-                            st.caption("Detected via " + item["method"] + " matching")
+                            st.caption(item["method"])
 
 st.markdown("---")
 st.caption("MedCheck AI | Data: U.S. FDA openFDA | Not medical advice")
-
-  
