@@ -698,10 +698,47 @@ with tab2:
                     ", ".join(data["generic"]) or "N/A"
                 )
 
-                st.divider()
+     st.warning(
+                    "No interacting drug mentions were detected."
+                )
 
-                if not data["interactions"]:
+                if data.get("note"):
+                    st.info(
+                        data["note"]
+                    )
 
-                    st.warning(
-                        "No interacting drug mentions were detected."
+            else:
+
+                for item in data["interactions"]:
+
+                    icon = (
+                        "📖"
+                        if item["method"] == "dictionary"
+                        else "🔎"
+                    )
+
+                    with st.expander(
+                        f"{icon} {item['drug']}"
+                    ):
+
+                        st.write(
+                            item["context"]
+                        )
+
+                        st.caption(
+                            f"Detected via {item['method']} matching"
+                        )
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown("---")
+
+st.caption(
+    "MedCheck AI | U.S. FDA openFDA data | "
+    "AI-assisted evidence explanation | "
+    "Educational use only"
+)
      
