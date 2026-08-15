@@ -3,419 +3,132 @@ import requests
 import re
 from typing import List, Dict, Optional
 
-st.set_page_config(
-    page_title="MedCheck AI",
-    page_icon="💊",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="MedCheck AI", page_icon="💊", layout="centered")
 
-# ===================== CUSTOM CSS =====================
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .main {
-        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-        min-height: 100vh;
-    }
-    
-    .stApp {
-        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-    }
-    
-    .title-container {
-        text-align: center;
-        padding: 2rem 0 1rem 0;
-    }
-    
-    .main-title {
-        font-size: 3rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #00d4ff, #7b2cbf, #ff006e);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 0.5rem;
-        letter-spacing: -1px;
-    }
-    
-    .subtitle {
-        color: #a0a0c0;
-        font-size: 1.1rem;
-        font-weight: 300;
-        margin-top: -10px;
-    }
-    
-    .badge {
-        display: inline-block;
-        background: rgba(0, 212, 255, 0.15);
-        border: 1px solid rgba(0, 212, 255, 0.3);
-        color: #00d4ff;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 500;
-        margin-top: 8px;
-    }
-    
-    .card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-    
-    .input-card {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    .result-danger {
-        background: linear-gradient(135deg, rgba(255, 0, 110, 0.15), rgba(255, 0, 110, 0.05));
-        border: 1px solid rgba(255, 0, 110, 0.4);
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        animation: pulse-danger 2s infinite;
-    }
-    
-    .result-safe {
-        background: linear-gradient(135deg, rgba(0, 255, 136, 0.15), rgba(0, 255, 136, 0.05));
-        border: 1px solid rgba(0, 255, 136, 0.4);
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-    }
-    
-    @keyframes pulse-danger {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 110, 0.2); }
-        50% { box-shadow: 0 0 20px 5px rgba(255, 0, 110, 0.1); }
-    }
-    
-    .drug-tag {
-        display: inline-block;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 6px 16px;
-        border-radius: 25px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        margin: 2px;
-    }
-    
-    .context-box {
-        background: rgba(0, 0, 0, 0.3);
-        border-left: 3px solid #00d4ff;
-        padding: 12px 16px;
-        border-radius: 0 8px 8px 0;
-        margin-top: 10px;
-        color: #c0c0e0;
-        font-style: italic;
-        font-size: 0.9rem;
-    }
-    
-    .stat-box {
-        text-align: center;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .stat-number {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #00d4ff;
-    }
-    
-    .stat-label {
-        font-size: 0.8rem;
-        color: #8888aa;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    .footer {
-        text-align: center;
-        color: #555577;
-        font-size: 0.75rem;
-        margin-top: 3rem;
-        padding-bottom: 2rem;
-    }
-    
-    div[data-testid="stTabs"] button {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border-radius: 8px 8px 0 0 !important;
-        border: none !important;
-        color: #8888aa !important;
-        font-weight: 500 !important;
-    }
-    
-    div[data-testid="stTabs"] button[aria-selected="true"] {
-        background: rgba(0, 212, 255, 0.15) !important;
-        color: #00d4ff !important;
-        border-bottom: 2px solid #00d4ff !important;
-    }
-    
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 32px;
-        font-weight: 600;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-        width: 100%;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-    }
-    
-    .stTextInput > div > div > input {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        color: white;
-        padding: 14px;
-        font-size: 1rem;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #00d4ff;
-        box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
-    }
-    
-    .stRadio > div {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 10px;
-        padding: 8px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ===================== API CONFIG =====================
 BASE_URL = "https://api.fda.gov/drug/label.json"
 
 KNOWN_DRUGS = {
     "warfarin", "aspirin", "ibuprofen", "naproxen", "acetaminophen", "paracetamol",
     "amoxicillin", "azithromycin", "ciprofloxacin", "metformin", "insulin",
     "atorvastatin", "simvastatin", "rosuvastatin", "pravastatin", "fluvastatin",
-    "lovastatin", "pitavastatin",
-    "lisinopril", "enalapril", "captopril", "ramipril", "perindopril",
-    "amlodipine", "nifedipine", "felodipine", "nicardipine", "isradipine",
-    "metoprolol", "atenolol", "propranolol", "carvedilol", "labetalol",
-    "bisoprolol", "nebivolol", "sotalol",
-    "losartan", "valsartan", "irbesartan", "candesartan", "telmisartan",
+    "lovastatin", "pitavastatin", "lisinopril", "enalapril", "captopril",
+    "amlodipine", "nifedipine", "felodipine", "metoprolol", "atenolol",
+    "propranolol", "carvedilol", "bisoprolol", "losartan", "valsartan",
     "omeprazole", "esomeprazole", "lansoprazole", "pantoprazole", "rabeprazole",
-    "ranitidine", "famotidine", "cimetidine", "nizatidine",
-    "sertraline", "fluoxetine", "escitalopram", "paroxetine", "citalopram",
-    "fluvoxamine", "venlafaxine", "duloxetine", "milnacipran",
-    "alprazolam", "lorazepam", "clonazepam", "diazepam", "temazepam",
-    "midazolam", "triazolam", "oxazepam", "chlordiazepoxide",
-    "phenytoin", "carbamazepine", "valproic acid", "divalproex", "lamotrigine",
+    "ranitidine", "famotidine", "sertraline", "fluoxetine", "escitalopram",
+    "paroxetine", "alprazolam", "lorazepam", "clonazepam", "diazepam",
+    "phenytoin", "carbamazepine", "valproic acid", "lamotrigine",
     "levetiracetam", "topiramate", "gabapentin", "pregabalin",
-    "levothyroxine", "methimazole", "propylthiouracil",
-    "prednisone", "prednisolone", "methylprednisolone", "dexamethasone",
-    "hydrocortisone", "betamethasone", "triamcinolone",
-    "furosemide", "bumetanide", "torsemide",
-    "hydrochlorothiazide", "chlorthalidone", "indapamide", "metolazone",
-    "spironolactone", "eplerenone", "amiloride", "triamterene",
-    "digoxin", "clopidogrel", "prasugrel", "ticagrelor",
-    "heparin", "enoxaparin", "dalteparin", "fondaparinux",
-    "rivaroxaban", "apixaban", "dabigatran", "edoxaban",
-    "phenobarbital", "primidone",
-    "rifampin", "rifampicin", "isoniazid", "pyrazinamide", "ethambutol",
-    "ketoconazole", "fluconazole", "itraconazole", "voriconazole", "posaconazole",
-    "erythromycin", "clarithromycin", "telithromycin",
-    "grapefruit", "alcohol", "ethanol", "caffeine", "nicotine",
-    "theophylline", "aminophylline",
-    "codeine", "morphine", "tramadol", "oxycodone", "hydrocodone",
-    "fentanyl", "methadone", "buprenorphine", "naloxone",
-    "ondansetron", "granisetron", "promethazine", "prochlorperazine",
-    "diphenhydramine", "loratadine", "cetirizine", "fexofenadine",
-    "montelukast", "zafirlukast", "zileuton",
-    "salbutamol", "albuterol", "salmeterol", "formoterol", "indacaterol",
-    "fluticasone", "budesonide", "beclomethasone", "mometasone",
-    "tiotropium", "ipratropium", "umeclidinium", "aclidinium",
-    "methotrexate", "cyclosporine", "tacrolimus", "sirolimus", "everolimus",
-    "mycophenolate", "azathioprine", "leflunomide",
-    "allopurinol", "colchicine", "febuxostat", "probenecid",
-    "sildenafil", "tadalafil", "vardenafil", "avanafil",
-    "finasteride", "dutasteride", "tamsulosin", "alfuzosin", "silodosin",
-    "donepezil", "memantine", "rivastigmine", "galantamine",
-    "levodopa", "carbidopa", "ropinirole", "pramipexole", "rotigotine",
-    "sumatriptan", "rizatriptan", "zolmitriptan", "naratriptan",
-    "bromocriptine", "cabergoline", "quinagolide",
-    "isosorbide mononitrate", "isosorbide dinitrate", "nitroglycerin",
-    "ranolazine", "ivabradine",
-    "hydralazine", "minoxidil", "doxazosin", "prazosin", "terazosin",
-    "clonidine", "methyldopa", "reserpine",
-    "amiodarone", "sotalol", "dofetilide", "ibutilide",
-    "flecainide", "propafenone", "mexiletine", "disopyramide",
-    "adenosine",
-    "alteplase", "reteplase", "tenecteplase", "streptokinase",
-    "cilostazol", "dipyridamole",
-    "tranexamic acid", "aminocaproic acid", "protamine",
-    "epoetin alfa", "darbepoetin alfa",
-    "filgrastim", "pegfilgrastim", "sargramostim",
-    "romiplostim", "eltrombopag", "avatrombopag",
-    "deferoxamine", "deferasirox", "deferiprone",
-    "hydroxyurea", "anagrelide",
-    "eculizumab", "ravulizumab",
-    "omalizumab", "mepolizumab", "benralizumab", "dupilumab",
-    "epinephrine", "norepinephrine", "dopamine", "dobutamine",
-    "phenylephrine", "pseudoephedrine",
-    "milrinone",
-    "sacubitril", "valsartan",
-    "acetazolamide", "topiramate", "zonisamide",
-    "oxcarbazepine", "eslicarbazepine",
-    "fosphenytoin",
-    "ethosuximide", "methsuximide",
-    "lacosamide", "perampanel", "cenobamate",
-    "rufinamide", "stiripentol", "cannabidiol",
-    "clobazam", "nitrazepam", "oxazepam",
-    "dihydroergotamine", "ergotamine", "methysergide",
-    "propranolol", "timolol", "nadolol",
-    "amitriptyline", "nortriptyline", "imipramine", "desipramine",
-    "clomipramine", "doxepin",
-    "onabotulinumtoxina", "erenumab", "fremanezumab", "galcanezumab",
-    "flunarizine", "cinnarizine", "pizotifen",
-    "diclofenac", "ketorolac", "indomethacin", "sulindac", "etodolac",
-    "meloxicam", "piroxicam", "celecoxib",
-    "metoclopramide", "promethazine", "prochlorperazine",
-    "chlorpromazine", "haloperidol", "droperidol",
-    "granisetron", "dolasetron", "palonosetron",
-    "aprepitant", "fosaprepitant",
-    "scopolamine", "dimenhydrinate", "meclizine",
-    "domperidone", "itopride",
-    "sennosides", "bisacodyl", "lactulose", "polyethylene glycol",
-    "loperamide", "diphenoxylate",
-    "bismuth subsalicylate",
-    "rifaximin", "neomycin",
-    "mesalamine", "sulfasalazine", "balsalazide",
-    "infliximab", "adalimumab", "golimumab", "certolizumab",
-    "vedolizumab", "natalizumab", "ustekinumab",
-    "tofacitinib", "upadacitinib",
-    "chlorambucil", "cyclophosphamide", "ifosfamide",
-    "sucralfate", "misoprostol",
-    "aluminum hydroxide", "magnesium hydroxide", "calcium carbonate",
-    "megestrol", "cyproheptadine", "mirtazapine",
-    "glipizide", "glyburide", "glimepiride",
-    "repaglinide", "nateglinide",
-    "pioglitazone", "rosiglitazone",
-    "sitagliptin", "saxagliptin", "linagliptin", "alogliptin",
-    "canagliflozin", "dapagliflozin", "empagliflozin", "ertugliflozin",
-    "liraglutide", "exenatide", "dulaglutide", "semaglutide",
-    "insulin lispro", "insulin aspart", "insulin glulisine",
-    "insulin regular", "insulin nph",
-    "insulin detemir", "insulin glargine", "insulin degludec",
-    "pramlintide",
-    "ezetimibe", "fenofibrate", "gemfibrozil", "niacin",
-    "evolocumab", "alirocumab",
+    "levothyroxine", "methimazole", "prednisone", "dexamethasone",
+    "furosemide", "hydrochlorothiazide", "spironolactone", "digoxin",
+    "clopidogrel", "heparin", "enoxaparin", "rivaroxaban", "apixaban",
+    "dabigatran", "phenobarbital", "rifampin", "ketoconazole", "fluconazole",
+    "itraconazole", "erythromycin", "clarithromycin", "grapefruit",
+    "alcohol", "caffeine", "theophylline", "codeine", "morphine",
+    "tramadol", "oxycodone", "fentanyl", "ondansetron", "promethazine",
+    "diphenhydramine", "loratadine", "cetirizine", "montelukast",
+    "salbutamol", "albuterol", "fluticasone", "budesonide", "tiotropium",
+    "methotrexate", "cyclosporine", "tacrolimus", "allopurinol",
+    "colchicine", "sildenafil", "tadalafil", "finasteride", "tamsulosin",
+    "donepezil", "memantine", "levodopa", "carbidopa", "sumatriptan",
+    "nitroglycerin", "ranolazine", "amiodarone", "sotalol", "adenosine",
+    "streptokinase", "cilostazol", "epoetin alfa", "filgrastim",
+    "deferoxamine", "hydroxyurea", "omalizumab", "epinephrine",
+    "dopamine", "milrinone", "sacubitril", "acetazolamide", "lacosamide",
+    "rufinamide", "cannabidiol", "clobazam", "amitriptyline",
+    "diclofenac", "ketorolac", "indomethacin", "meloxicam", "celecoxib",
+    "metoclopramide", "haloperidol", "granisetron", "aprepitant",
+    "scopolamine", "lactulose", "loperamide", "mesalamine",
+    "infliximab", "adalimumab", "tofacitinib", "cyclophosphamide",
+    "sucralfate", "glipizide", "glyburide", "repaglinide",
+    "pioglitazone", "sitagliptin", "canagliflozin", "dapagliflozin",
+    "empagliflozin", "liraglutide", "semaglutide", "insulin regular",
+    "insulin glargine", "pramlintide", "ezetimibe", "gemfibrozil",
 }
 
 DRUG_SUFFIXES = (
-    'nib', 'mab', 'zumab', 'ximab', 'tinib', 'ciclib', 'parib', 'vastatin',
-    'sartan', 'pril', 'olol', 'olide', 'azide', 'mycin', 'cycline', 'floxacin',
-    'micin', 'sone', 'nide', 'mide', 'zide', 'pam', 'lam', 'dipine', 'pramine',
-    'triptyline', 'prazole', 'tidine', 'xetine', 'pram', 'done', 'zodone',
-    'lone', 'zone', 'tide', 'glitazone', 'formin', 'glipizide', 'glyburide',
-    'sulfa', 'cillin', 'icillin', 'bactam', 'ceph', 'cef', 'penem', 'vir',
-    'navir', 'previr', 'tegravir', 'vudine', 'citabine', 'arabine'
+    'nib','mab','zumab','tinib','ciclib','parib','vastatin','sartan','pril',
+    'olol','olide','azide','mycin','cycline','floxacin','micin','sone','nide',
+    'mide','zide','pam','lam','dipine','pramine','triptyline','prazole',
+    'tidine','xetine','pram','done','zodone','lone','zone','tide','glitazone',
+    'formin','glipizide','glyburide','sulfa','cillin','bactam','cef','penem',
+    'vir','navir','previr','tegravir','vudine','citabine','arabine'
 )
 
 SKIP_WORDS = {
-    "the", "and", "for", "with", "may", "use", "see", "fda", "patients", "clinical",
-    "studies", "table", "figure", "section", "drug", "drugs", "medicine", "product",
-    "administration", "treatment", "therapy", "dose", "patient", "subject", "study",
-    "effect", "effects", "adverse", "reaction", "monitor", "increase", "decrease",
-    "concomitant", "coadministration", "pharmacokinetics", "metabolism", "absorption",
-    "distribution", "elimination", "plasma", "serum", "blood", "liver", "kidney",
-    "renal", "hepatic", "cardiac", "gastrointestinal", "central", "nervous", "system",
-    "respiratory", "oral", "intravenous", "subcutaneous", "intramuscular", "topical",
-    "inhibitor", "inducer", "substrate", "receptor", "agonist", "antagonist", "blocker",
-    "channel", "enzyme", "cyp", "food", "grapefruit", "juice", "alcohol", "smoking",
-    "pregnancy", "pediatric", "geriatric", "male", "female", "children", "adults",
-    "mild", "moderate", "severe", "significant", "clinically", "recommended", "avoid",
-    "caution", "contraindicated", "approximately", "result", "found", "observed",
-    "reported", "shown", "compared", "versus", "placebo", "control", "single",
-    "multiple", "daily", "week", "month", "year", "high", "low", "normal", "abnormal",
-    "increased", "decreased", "greater", "less", "before", "after", "during", "following",
-    "due", "because", "however", "therefore", "thus", "addition", "including", "example",
-    "manufacturer", "company", "brand", "generic", "formulation", "tablet", "capsule",
-    "injection", "solution", "cream", "ointment", "gel", "patch", "inhaler", "spray",
-    "drop", "package", "insert", "label", "prescribing", "information", "warning",
-    "precaution", "overdosage", "description", "indications", "contraindications",
-    "dosage", "supplied", "storage", "handling", "counseling", "revised", "date",
-    "copyright", "trademark", "all", "rights", "reserved", "disclaimer", "contact",
-    "phone", "email", "website", "address", "usa", "united", "states", "america",
-    "europe", "international", "global", "inc", "llc", "ltd", "corp", "corporation",
-    "division", "subsidiary", "group", "organization", "institution", "university",
-    "hospital", "clinic", "center", "department", "laboratory", "research", "physician",
-    "doctor", "pharmacist", "nurse", "practitioner", "specialist", "consultant",
-    "committee", "panel", "board", "society", "association", "foundation", "council",
-    "academy", "college", "school", "institute",
+    "the","and","for","with","may","use","see","fda","patients","clinical",
+    "studies","table","figure","section","drug","drugs","medicine","product",
+    "administration","treatment","therapy","dose","patient","subject","study",
+    "effect","effects","adverse","reaction","monitor","increase","decrease",
+    "concomitant","coadministration","pharmacokinetics","metabolism","absorption",
+    "distribution","elimination","plasma","serum","blood","liver","kidney",
+    "renal","hepatic","cardiac","gastrointestinal","central","nervous","system",
+    "respiratory","oral","intravenous","subcutaneous","intramuscular","topical",
+    "inhibitor","inducer","substrate","receptor","agonist","antagonist","blocker",
+    "channel","enzyme","cyp","food","grapefruit","juice","alcohol","smoking",
+    "pregnancy","pediatric","geriatric","male","female","children","adults",
+    "mild","moderate","severe","significant","clinically","recommended","avoid",
+    "caution","contraindicated","approximately","result","found","observed",
+    "reported","shown","compared","versus","placebo","control","single",
+    "multiple","daily","week","month","year","high","low","normal","abnormal",
+    "increased","decreased","greater","less","before","after","during","following",
+    "due","because","however","therefore","thus","addition","including","example",
+    "manufacturer","company","brand","generic","formulation","tablet","capsule",
+    "injection","solution","cream","ointment","gel","patch","inhaler","spray",
+    "drop","package","insert","label","prescribing","information","warning",
+    "precaution","overdosage","description","indications","contraindications",
+    "dosage","supplied","storage","handling","counseling","revised","date",
+    "copyright","trademark","all","rights","reserved","disclaimer","contact",
+    "phone","email","website","address","usa","united","states","america",
+    "europe","international","global","inc","llc","ltd","corp","corporation",
+    "division","subsidiary","group","organization","institution","university",
+    "hospital","clinic","center","department","laboratory","research","physician",
+    "doctor","pharmacist","nurse","practitioner","specialist","consultant",
+    "committee","panel","board","society","association","foundation","council",
+    "academy","college","school","institute",
 }
 
 
 class OpenFDAInteractionFinder:
-    def __init__(self, api_key: None):
+    def __init__(self, api_key=None):
         self.api_key = api_key
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Pharmacy-Project/1.0)'
-        })
+        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Pharmacy-Project/1.0)"})
 
-    def _make_request(self, params: Dict) -> Optional[Dict]:
+    def _make_request(self, params):
         if self.api_key:
-            params['api_key'] = self.api_key
+            params["api_key"] = self.api_key
         try:
-            response = self.session.get(BASE_URL, params=params, timeout=15)
-            if response.status_code == 404:
+            resp = self.session.get(BASE_URL, params=params, timeout=15)
+            if resp.status_code == 404:
                 return None
-            if response.status_code == 429:
-                st.warning("Rate limit exceeded. Get free API key at open.fda.gov")
+            if resp.status_code == 429:
+                st.warning("Rate limit hit. Get API key at open.fda.gov")
                 return None
-            if response.status_code != 200:
+            if resp.status_code != 200:
                 return None
-            return response.json()
+            return resp.json()
         except Exception:
             return None
 
-    def search_drug(self, drug_name: str, search_type: str = "brand") -> Optional[Dict]:
+    def search_drug(self, drug_name, search_type="brand"):
         drug_name = drug_name.strip().upper()
         if search_type == "brand":
-            search_query = 'openfda.brand_name:"' + drug_name + '"'
+            q = 'openfda.brand_name:"' + drug_name + '"'
         else:
-            search_query = 'openfda.generic_name:"' + drug_name + '"'
-        params = {"search": search_query, "limit": 1}
-        data = self._make_request(params)
+            q = 'openfda.generic_name:"' + drug_name + '"'
+        data = self._make_request({"search": q, "limit": 1})
         if not data or not data.get("results"):
             if search_type == "brand":
-                search_query = 'openfda.brand_name:' + drug_name
+                q = 'openfda.brand_name:' + drug_name
             else:
-                search_query = 'openfda.generic_name:' + drug_name
-            params["search"] = search_query
-            data = self._make_request(params)
+                q = 'openfda.generic_name:' + drug_name
+            data = self._make_request({"search": q, "limit": 1})
         if data and data.get("results"):
             return data["results"][0]
         return None
 
-    def extract_interaction_text(self, label: Dict) -> Optional[str]:
+    def extract_interaction_text(self, label):
         if not label:
             return None
         interactions = label.get("drug_interactions")
@@ -429,7 +142,7 @@ class OpenFDAInteractionFinder:
                     return val
         return None
 
-    def _get_label_drugs(self, label: Dict) -> set:
+    def _get_label_drugs(self, label):
         drugs = set()
         openfda = label.get("openfda", {})
         for field in ["brand_name", "generic_name", "substance_name"]:
@@ -440,32 +153,26 @@ class OpenFDAInteractionFinder:
                 drugs.add(v.lower().strip())
         return drugs
 
-    def extract_drugs_from_text(self, text: str, label: Dict) -> List[Dict]:
+    def extract_drugs_from_text(self, text, label):
         if not text:
             return []
         known_drugs = KNOWN_DRUGS | self._get_label_drugs(label)
         found = []
         text_lower = text.lower()
         seen = set()
-
         for drug in known_drugs:
             if len(drug) < 3:
                 continue
-            pattern = r'\b' + re.escape(drug) + r'\b'
+            pattern = r"\b" + re.escape(drug) + r"\b"
             for match in re.finditer(pattern, text_lower):
                 if drug not in seen:
                     start = max(0, match.start() - 60)
                     end = min(len(text), match.end() + 60)
                     snippet = text[start:end].strip()
-                    found.append({
-                        "drug": drug.title(),
-                        "context": "..." + snippet + "...",
-                        "method": "dictionary"
-                    })
+                    found.append({"drug": drug.title(), "context": "..." + snippet + "...", "method": "dictionary"})
                     seen.add(drug)
                     break
-
-        cap_pattern = r'\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\b'
+        cap_pattern = r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\b"
         for match in re.finditer(cap_pattern, text):
             candidate = match.group(1)
             cand_lower = candidate.lower()
@@ -483,21 +190,99 @@ class OpenFDAInteractionFinder:
                 start = max(0, match.start() - 60)
                 end = min(len(text), match.end() + 60)
                 snippet = text[start:end].strip()
-                found.append({
-                    "drug": candidate,
-                    "context": "..." + snippet + "...",
-                    "method": "heuristic"
-                })
+                found.append({"drug": candidate, "context": "..." + snippet + "...", "method": "heuristic"})
                 seen.add(cand_lower)
-
-        found.sort(key=lambda x: text_lower.find(x["drug"].lower())
-                   if text_lower.find(x["drug"].lower()) != -1 else 99999)
+        found.sort(key=lambda x: text_lower.find(x["drug"].lower()) if text_lower.find(x["drug"].lower()) != -1 else 99999)
         return found
 
-    def get_interactions(self, drug_name: str, search_type: str = "brand") -> Dict:
+    def get_interactions(self, drug_name, search_type="brand"):
         label = self.search_drug(drug_name, search_type)
         if not label:
-            return {
-                "success": False,
-                "drug": drug_name,
-             
+            return {"success": False, "drug": drug_name, "error": "No FDA label found for '" + drug_name + "'", "interacting_drugs": []}
+        openfda = label.get("openfda", {})
+        brand_names = openfda.get("brand_name", [])
+        generic_names = openfda.get("generic_name", [])
+        manufacturer = openfda.get("manufacturer_name", ["Unknown"])
+        if isinstance(manufacturer, list):
+            manufacturer = manufacturer[0]
+        interaction_text = self.extract_interaction_text(label)
+        if not interaction_text:
+            return {"success": True, "drug": drug_name, "brand_names": brand_names, "generic_names": generic_names, "manufacturer": manufacturer, "interacting_drugs": [], "note": "No interactions section"}
+        interacting_drugs = self.extract_drugs_from_text(interaction_text, label)
+        return {"success": True, "drug": drug_name, "brand_names": brand_names, "generic_names": generic_names, "manufacturer": manufacturer, "interacting_drugs": interacting_drugs, "interaction_count": len(interacting_drugs)}
+
+
+def check_interaction_between_two(drug_a, drug_b):
+    finder = OpenFDAInteractionFinder()
+    result = finder.get_interactions(drug_a, "generic")
+    if not result["success"]:
+        return {"found": False, "reason": result.get("error", "Unknown")}
+    interacting = result.get("interacting_drugs", [])
+    drug_b_lower = drug_b.lower()
+    for item in interacting:
+        if item["drug"].lower() == drug_b_lower or drug_b_lower in item["drug"].lower():
+            return {"found": True, "context": item["context"], "method": item["method"]}
+    return {"found": False, "reason": "No interaction found in FDA label"}
+
+
+st.title("💊 MedCheck AI")
+st.caption("Intelligent Drug Interaction Analysis | Powered by openFDA")
+st.markdown("---")
+
+tab1, tab2 = st.tabs(["🔍 Two-Drug Check", "📋 Single Drug Profile"])
+
+with tab1:
+    c1, c2 = st.columns(2)
+    with c1:
+        drug1 = st.text_input("Drug 1", placeholder="e.g. Warfarin")
+    with c2:
+        drug2 = st.text_input("Drug 2", placeholder="e.g. Aspirin")
+    if st.button("Analyze Interaction", use_container_width=True):
+        if not drug1 or not drug2:
+            st.error("Enter both drug names")
+        else:
+            with st.spinner("Checking FDA labels..."):
+                result = check_interaction_between_two(drug1, drug2)
+            if result["found"]:
+                st.error("⚠️ INTERACTION DETECTED")
+                st.markdown("**" + drug1 + "** may interact with **" + drug2 + "**")
+                st.info(result["context"])
+                st.caption("Source: FDA Drug Label | Detection: " + result["method"].title())
+            else:
+                st.success("✅ No interaction found in FDA label")
+                with st.expander("See details"):
+                    st.write(result["reason"])
+
+with tab2:
+    drug_input = st.text_input("Enter drug name", placeholder="e.g. Metformin", key="d3")
+    search_type = st.radio("Search by", ["generic", "brand"], horizontal=True)
+    if st.button("Find Interactions", key="btn2", use_container_width=True):
+        if not drug_input:
+            st.error("Enter a drug name")
+        else:
+            with st.spinner("Scanning FDA database..."):
+                finder = OpenFDAInteractionFinder()
+                result = finder.get_interactions(drug_input, search_type)
+            if not result["success"]:
+                st.error(result["error"])
+            else:
+                c1, c2 = st.columns(2)
+                c1.metric("Interactions", len(result.get("interacting_drugs", [])))
+                c2.metric("Manufacturer", result.get("manufacturer", "N/A")[:20])
+                st.write("**Brand:**", ", ".join(result.get("brand_names", [])) or "N/A")
+                st.write("**Generic:**", ", ".join(result.get("generic_names", [])) or "N/A")
+                st.divider()
+                drugs = result.get("interacting_drugs", [])
+                if not drugs:
+                    st.warning("No interacting drugs found")
+                else:
+                    for item in drugs:
+                        icon = "📖" if item["method"] == "dictionary" else "🔎"
+                        with st.expander(icon + " " + item["drug"]):
+                            st.write(item["context"])
+                            st.caption("Detected via " + item["method"] + " matching")
+
+st.markdown("---")
+st.caption("MedCheck AI | Data: U.S. FDA openFDA | Not medical advice")
+
+  
