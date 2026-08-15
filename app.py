@@ -1032,4 +1032,4 @@ with tab1:
                 st.caption(
                     "AI explanation is grounded in the "
                     "retrieved FDA label evidence. "
-                    "Educational Use only"
+                    "Educational Use only" )         
