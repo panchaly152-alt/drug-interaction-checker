@@ -60,7 +60,7 @@ ALIASES = {
     "spiriva":"tiotropium","remicade":"infliximab","humira":"adalimumab",
     "xeljanz":"tofacitinib","carafate":"sucralfate","prandin":"repaglinide",
     "invokana":"canagliflozin","zetia":"ezetimibe","lopid":"gemfibrozil",
-    "immitrex":"sumatriptan","ranexa":"ranolazine","im
+    "immitrex":"sumatriptan","ranexa":"ranolazine",
 # =========================================================
 # EVIDENCE CATEGORIES
 # =========================================================
