@@ -981,8 +981,9 @@ medicine.
 The tool has identified clinically
 relevant terms and interaction signals
 from the retrieved FDA label text.
+This is an educational prototype.
 
-This is an **e# =========================================================
+"""
 # FOOTER
 # =========================================================
 
