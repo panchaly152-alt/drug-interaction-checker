@@ -1026,7 +1026,7 @@ with tab2:
 
     drug_list_input = st.text_area(
         "Medicine List",
-        placeholder="warfarin
+        placeholder="warfarin"
 aspirin
 metformin
 atorvastatin
